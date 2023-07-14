@@ -197,14 +197,11 @@ func (self *ViewBufferManager) NewCmdTask(start func() (*exec.Cmd, io.Reader), p
 					for i := 0; i < linesToRead.Total; i++ {
 						var ok bool
 						var line []byte
-					inner:
-						for {
-							select {
-							case <-stop:
-								break outer
-							case line, ok = <-data:
-								break inner
-							}
+						select {
+						case <-stop:
+							break outer
+						case line, ok = <-data:
+							break
 						}
 
 						loadingMutex.Lock()
