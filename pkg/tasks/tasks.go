@@ -147,6 +147,15 @@ func (self *ViewBufferManager) NewCmdTask(start func() (*exec.Cmd, io.Reader), p
 		scanner := bufio.NewScanner(r)
 		scanner.Split(bufio.ScanLines)
 
+		data := make(chan []byte)
+
+		go utils.Safe(func() {
+			for scanner.Scan() {
+				data <- scanner.Bytes()
+			}
+			close(data)
+		})
+
 		loaded := false
 
 		go utils.Safe(func() {
@@ -186,13 +195,18 @@ func (self *ViewBufferManager) NewCmdTask(start func() (*exec.Cmd, io.Reader), p
 					break outer
 				case linesToRead := <-self.readLines:
 					for i := 0; i < linesToRead.Total; i++ {
-						select {
-						case <-stop:
-							break outer
-						default:
+						var ok bool
+						var line []byte
+					inner:
+						for {
+							select {
+							case <-stop:
+								break outer
+							case line, ok = <-data:
+								break inner
+							}
 						}
 
-						ok := scanner.Scan()
 						loadingMutex.Lock()
 						if !loaded {
 							self.beforeStart()
@@ -209,7 +223,7 @@ func (self *ViewBufferManager) NewCmdTask(start func() (*exec.Cmd, io.Reader), p
 							self.onEndOfInput()
 							break outer
 						}
-						writeToView(append(scanner.Bytes(), '\n'))
+						writeToView(append(line, '\n'))
 
 						if i+1 == linesToRead.InitialRefreshAfter {
 							// We have read enough lines to fill the view, so do a first refresh
